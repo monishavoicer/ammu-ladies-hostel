@@ -167,3 +167,87 @@ addEventListener("keydown", e => {
   if (e.key === "Escape") closeLb(); if (e.key === "ArrowLeft") show(li - 1); if (e.key === "ArrowRight") show(li + 1);
 });
 
+
+/* ===== Conversion tracking (GA4): phone_click and whatsapp_click =====
+   Added at the END of script.js. Nothing above this block was changed.
+   - phone_click    : any tel: link (Call Now buttons, sticky bar, number links)
+   - whatsapp_click : any WhatsApp link/button, room "Enquire" buttons, and the enquiry form
+   Parameters: event_label (which button), room_type, link_location.
+   To test in GA4 DebugView, open the site with ?ga_debug=1 at the end of the address. */
+(function () {
+  const DEBUG = /[?&]ga_debug=1/.test(location.search);
+
+  function track(name, params) {
+    if (typeof gtag !== "function") return;   // gtag is defined in the <head> of index.html
+    if (DEBUG) params.debug_mode = true;
+    gtag("event", name, params);
+  }
+
+  // Where on the page the click happened
+  function where(el) {
+    if (el.closest(".sticky-bar")) return "sticky_bar";
+    if (el.closest(".fab-wa")) return "floating";
+    if (el.closest(".hero")) return "hero";
+    if (el.closest(".site-header")) return "header";
+    if (el.closest("footer")) return "footer";
+    if (el.closest("#contact")) return "contact";
+    if (el.closest("#rooms")) return "rooms";
+    return "page";
+  }
+
+  // One listener for the whole page (capture phase), so every present and future button is covered
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest) return;
+
+    // 1) Room card "Enquire" buttons (these open WhatsApp from script.js above)
+    const roomBtn = e.target.closest("[data-room]");
+    if (roomBtn) {
+      track("whatsapp_click", {
+        event_label: "room_enquiry",
+        room_type: roomBtn.dataset.room,
+        link_location: "rooms"
+      });
+      return;
+    }
+
+    // 2) Phone links
+    const tel = e.target.closest('a[href^="tel:"]');
+    if (tel) {
+      const secondary = tel.hasAttribute("data-call2") || tel.getAttribute("href") === "tel:" + CONFIG.phone2Link;
+      const isButton = tel.classList.contains("btn") || tel.hasAttribute("data-call");
+      const loc = where(tel);
+      track("phone_click", {
+        event_label: secondary ? loc + "_number_2" : loc + (isButton ? "_call_now" : "_number"),
+        phone_type: secondary ? "secondary" : "primary",
+        link_location: loc
+      });
+      return;
+    }
+
+    // 3) WhatsApp links (floating button, sticky bar, hero, contact, footer)
+    const wa = e.target.closest("a[data-wa], a[href*='wa.me']");
+    if (wa) {
+      const loc = where(wa);
+      track("whatsapp_click", {
+        event_label: loc + "_whatsapp",
+        room_type: "general",
+        link_location: loc
+      });
+    }
+  }, true);
+
+  // 4) Enquiry form. This listener is registered AFTER the form's own submit handler above,
+  //    so it only records the event when the form passed validation and WhatsApp was opened.
+  const f = document.getElementById("form");
+  if (f) {
+    f.addEventListener("submit", function () {
+      if (f.querySelector("[aria-invalid=true]")) return;
+      const sel = document.getElementById("f-room");
+      track("whatsapp_click", {
+        event_label: "enquiry_form",
+        room_type: sel ? sel.value : "unknown",
+        link_location: "contact"
+      });
+    });
+  }
+})();
